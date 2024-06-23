@@ -7,7 +7,7 @@ import tempfile
 import subprocess as sp
 from tqdm import tqdm
 import cv2
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, non_negative_factorization
 import argparse
 
 # 32, 32, m, n
@@ -21,13 +21,28 @@ def extract_level_colors (steps, level):
         samples.append(np.reshape(step[level], (32, -1)))
     offset = samples[0].shape[1]
     samples = np.concatenate(samples, axis=1).T
-    pca = PCA(3)
-    samples = pca.fit_transform(samples)
-    samples -= np.mean(samples, axis=1, keepdims=True)
-    samples /= np.std(samples, axis=1, keepdims=True)
-    samples *= 128 #/3.0
-    samples += 128
-    samples = np.clip(np.rint(samples), 0,255).astype(np.uint8)
+
+    if False:
+        pca = PCA(3)
+        samples = pca.fit_transform(samples)
+        samples -= np.mean(samples, axis=1, keepdims=True)
+        samples /= np.std(samples, axis=1, keepdims=True)
+        samples *= 128 #/3.0
+        samples += 128
+        samples = np.clip(np.rint(samples), 0,255).astype(np.uint8)
+    else:
+        assert samples.shape[1] == 32
+        r = np.linalg.norm(samples[:, 0:11], axis=1)
+        g = np.linalg.norm(samples[:, 11:22], axis=1)
+        b = np.linalg.norm(samples[:, 22:32], axis=1)
+        samples = np.stack([r,g,b], axis=1)
+        m2 = np.sqrt(np.mean(np.square(samples), axis=0, keepdims=True))
+        samples /= m2
+        samples *= 512
+        print(np.amax(samples, axis=0))
+        print(np.percentile(samples, 95, axis=0))
+        samples = np.clip(np.rint(samples),1,255).astype(np.uint8)
+
     return samples
 
 def render_image (tokens, colors = None):
@@ -38,7 +53,7 @@ def render_image (tokens, colors = None):
         ansi = []
         for i in range(colors.shape[0]):
             r,g,b = colors[i, :]
-            ansi.append("\033[1;%d;%d;%d;t%s" % (r,g,b,tokens[i]))
+            ansi.append("\033[1;%d;%d;%d;t%s" % (r,g,b,str(tokens[i])))
         ansi.append("\033[0m")
         ansi.append(tokens[colors.shape[0]])
         ansi.append("\033[1;1;1;1;t")
