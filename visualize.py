@@ -72,7 +72,7 @@ def render_image (tokens, colors = None):
         frame = cv2.imread(f2.name, cv2.IMREAD_COLOR)
         return frame
 
-def visualize_series (root, frames, scale=2.0):
+def visualize_series (root, frames, image_scale=2.0, video_scale=2.0):
     os.makedirs(root, exist_ok=True)
     T = len(frames)
     out = None
@@ -80,12 +80,13 @@ def visualize_series (root, frames, scale=2.0):
         #f.write(f'<html><body><h1>Level {level}</h1>\n')
         f.write(f'<html><body>\n')
         for t in range(T):
-            frame = frames[t]
-            if not scale is None:
-                frame = cv2.resize(frame, None, fx=scale, fy=scale)
+            frame0 = frames[t]
+            frame = frame0
+            if not video_scale is None:
+                frame = cv2.resize(frame, None, fx=video_scale, fy=video_scale)
             H, W, _ = frame.shape
             if out is None:
-                out = cv2.VideoWriter(os.path.join(root, 'video.avi'), cv2.VideoWriter_fourcc(*'MJPG'), 2.0, (W, H))
+                out = cv2.VideoWriter(os.path.join(root, 'video.avi'), cv2.VideoWriter_fourcc(*'MJPG'), 1.0, (W, H))
                 f.write(f'''
                 <video width="{frame.shape[1]}" height="{frame.shape[0]}" controls>
                 <source src="video.mp4" type="video/mp4"/>
@@ -93,8 +94,11 @@ def visualize_series (root, frames, scale=2.0):
                 ''')
             f.write(f'''<h3>Step {t}</h3>\n''')
             f.write(f'''<img src='{t:04d}.jpg'></img><br/>\n''')
-            cv2.imwrite(os.path.join(root, '%04d.jpg' % t), frame)
             out.write(frame)
+            frame = frame0
+            if not image_scale is None:
+                frame = cv2.resize(frame, None, fx=image_scale, fy=image_scale)
+            cv2.imwrite(os.path.join(root, '%04d.jpg' % t), frame)
     out.release()
 
 def process_level (args):
@@ -157,8 +161,8 @@ def visualize (input_path, output_path, level):
                     h1, w1, _ = image.shape
                     frame[(r*h):(r*h+h1), (c*w):(c*w+w1), :] = image
                 l += 1
-        series.append(cv2.resize(frame, None, fx=0.4, fy=0.4))
-    visualize_series(os.path.join(output_path, 'all'), series, None)
+        series.append(frame) #cv2.resize(frame, None, fx=0.4, fy=0.4))
+    visualize_series(os.path.join(output_path, 'all'), series, image_scale=None, video_scale=0.4)
 
 
 if __name__ == '__main__':
