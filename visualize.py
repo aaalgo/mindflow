@@ -79,7 +79,7 @@ def visualize_series (root, frames, scale=2.0):
     with open(os.path.join(root, 'index.html'), 'w') as f:
         #f.write(f'<html><body><h1>Level {level}</h1>\n')
         f.write(f'<html><body>\n')
-        for t in tqdm(list(range(T))):
+        for t in range(T):
             frame = frames[t]
             if not scale is None:
                 frame = cv2.resize(frame, None, fx=scale, fy=scale)
@@ -116,28 +116,6 @@ def process_level (args):
     visualize_series(root, images)
     return level, images
 
-def montage_level (images, t, h, w):
-    #R = 5
-    #C = 6
-    R = 1
-    C = 1
-    assert R * C == len(images)
-    #h, w, _ = images[0][0].shape
-    H = h * R
-    W = w * C
-    out = np.zeros((H, W, 3), dtype=np.uint8)
-
-
-    l = 0
-    for r in range(R):
-        for c in range(C):
-            if l < len(images):
-                image = images[l][t]
-                h1, w1, _ = image.shape
-                out[(r*h):(r*h+h1), (c*w):(c*w+w1), :] = image
-            l += 1
-    return out
-
 def visualize (input_path, output_path, level):
     with open(input_path, 'rb') as f:
         tokens, steps = pickle.load(f)
@@ -146,7 +124,6 @@ def visualize (input_path, output_path, level):
     levels, channels, prompt_length, _ = steps[0].shape
 
     frames_by_level = [None for _ in range(levels)]
-    #for level in range(levels):
 
     os.makedirs(output_path, exist_ok=True)
 
@@ -155,6 +132,7 @@ def visualize (input_path, output_path, level):
 
         tasks = [(tokens, steps, level, output_path) for level in range(levels)]
         f.write("<html><body>\n")
+        f.write(f"<h2><a href='all/'>All Level View</a></h2>\n")
         l = 0
         for i, frames in tqdm(pool.imap_unordered(process_level, tasks), total=levels):
             frames_by_level[i] = frames
@@ -162,6 +140,25 @@ def visualize (input_path, output_path, level):
             l += 1
             pass
         f.write("</body></html>\n")
+
+    series = []
+    R, C = 6, 5
+    assert R * C == levels
+    h, w, _ = frames_by_level[0][0].shape
+    H = h * R
+    W = w * C
+    for t, _ in enumerate(frames_by_level[0]):
+        frame = np.zeros((H, W, 3), dtype=np.uint8)
+        l = 0
+        for r in range(R):
+            for c in range(C):
+                if l < len(frames_by_level):
+                    image = frames_by_level[l][t]
+                    h1, w1, _ = image.shape
+                    frame[(r*h):(r*h+h1), (c*w):(c*w+w1), :] = image
+                l += 1
+        series.append(cv2.resize(frame, None, fx=0.4, fy=0.4))
+    visualize_series(os.path.join(output, 'all'), series, None)
 
 
 if __name__ == '__main__':
