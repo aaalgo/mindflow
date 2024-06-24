@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import os
 import sys
 import torch
 import numpy as np
 import pickle
 import tempfile
 import subprocess as sp
+from multiprocessing import Pool
 from tqdm import tqdm
 import cv2
 from sklearn.decomposition import PCA, non_negative_factorization
@@ -39,8 +41,8 @@ def extract_level_colors (steps, level):
         m2 = np.sqrt(np.mean(np.square(samples), axis=0, keepdims=True))
         samples /= m2
         samples *= 512
-        print(np.amax(samples, axis=0))
-        print(np.percentile(samples, 95, axis=0))
+        #print(np.amax(samples, axis=0))
+        #print(np.percentile(samples, 95, axis=0))
         samples = np.clip(np.rint(samples),1,255).astype(np.uint8)
 
     return samples
@@ -67,13 +69,40 @@ def render_image (tokens, colors = None):
         f.write(text)
         f.flush()
         sp.check_call('ansilove -o %s %s > /dev/null 2> /dev/null' % (f2.name, f.name), shell=True)
-        return cv2.imread(f2.name, cv2.IMREAD_COLOR)
+        frame = cv2.imread(f2.name, cv2.IMREAD_COLOR)
+        return frame
 
-def process_level (tokens, steps, level, image_shape):
+def visualize_series (root, frames, scale=2.0):
+    os.makedirs(root, exist_ok=True)
+    T = len(frames)
+    out = None
+    with open(os.path.join(root, 'index.html'), 'w') as f:
+        #f.write(f'<html><body><h1>Level {level}</h1>\n')
+        f.write(f'<html><body>\n')
+        for t in tqdm(list(range(T))):
+            frame = frames[t]
+            if not scale is None:
+                frame = cv2.resize(frame, None, fx=scale, fy=scale)
+            H, W, _ = frame.shape
+            if out is None:
+                out = cv2.VideoWriter(os.path.join(root, 'video.avi'), cv2.VideoWriter_fourcc(*'MJPG'), 2.0, (W, H))
+                f.write(f'''
+                <video width="{frame.shape[1]}" height="{frame.shape[0]}" controls>
+                <source src="video.mp4" type="video/mp4"/>
+                </video><br/>
+                ''')
+            f.write(f'''<h3>Step {t}</h3>\n''')
+            f.write(f'''<img src='{t:04d}.png'></img><br/>\n''')
+            cv2.imwrite(os.path.join(root, '%04d.png' % t), frame)
+            out.write(frame)
+    out.release()
+
+def process_level (args):
+    tokens, steps, level, output_path = args
     colors = extract_level_colors(steps, level)
     off = 0
     images = []
-    for i, step in tqdm(list(enumerate(steps))):
+    for i, step in enumerate(steps):
         _, a, b, c = step.shape
 
         step_colors = np.reshape(colors[off:(off + b * c), :], (b, c, colors.shape[-1]))
@@ -81,12 +110,11 @@ def process_level (tokens, steps, level, image_shape):
         if b > 1: # skip prompt
             continue
         image = render_image(tokens, step_colors[0])
-        if image.shape != image.shape:
-            cv2.imwrite('b.png', image)
-            sys.exit(0)
-
         images.append(image)
-    return images
+
+    root = os.path.join(output_path, 'level_%02d' % level)
+    visualize_series(root, images)
+    return level, images
 
 def montage_level (images, t, h, w):
     #R = 5
@@ -110,40 +138,39 @@ def montage_level (images, t, h, w):
             l += 1
     return out
 
-
-
-
-def make_video (input_path, output_path, level):
+def visualize (input_path, output_path, level):
     with open(input_path, 'rb') as f:
         tokens, steps = pickle.load(f)
     # steps[0].shape        levels * channels * n * n
     #   n == number of prompt tokens
     levels, channels, prompt_length, _ = steps[0].shape
 
-    frame = render_image(tokens, None)
-    frames_by_level = []
+    frames_by_level = [None for _ in range(levels)]
     #for level in range(levels):
-    while True:
-        print("Level:", level)
-        frames_by_level.append(process_level(tokens, steps, level, frame.shape))
-        break
 
-    T = len(frames_by_level[0])
-    out = None
-    for t in tqdm(list(range(T))):
-        #frame = montage_level(frames_by_level, t)
-        frame = frames_by_level[0][t]
-        H, W, _ = frame.shape
-        if out is None:
-            out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'MJPG'), 2.0, (W, H))
-        out.write(frame)
-    out.release()
+    os.makedirs(output_path, exist_ok=True)
+
+    with Pool() as pool, \
+        open(os.path.join(output_path, 'index.html'), 'w') as f:
+
+        tasks = [(tokens, steps, level, output_path) for level in range(levels)]
+        f.write("<html><body>\n")
+        l = 0
+        for i, frames in tqdm(pool.imap_unordered(process_level, tasks), total=levels):
+            frames_by_level[i] = frames
+            f.write(f"<h2><a href='level_{l:02d}/'>Level {l}</a></h2>\n")
+            l += 1
+            pass
+        f.write("</body></html>\n")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", default='output.pkl', type=str)
-    parser.add_argument("-o", "--output", default='output.avi', type=str)
+    parser.add_argument("-o", "--output", default='output', type=str)
     parser.add_argument("-l", "--level", default=15, type=int)
     args = parser.parse_args()
-    make_video(args.input, args.output, args.level)
+    visualize(args.input, args.output, args.level)
+    print("Run the following command to update video:")
+    print("ls -d level_0* | parallel ffmpeg -i {}/video.avi -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p {}/video.mp4")
 
