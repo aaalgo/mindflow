@@ -158,7 +158,7 @@ def visualize (input_path, output_path, level):
                     frame[(r*h):(r*h+h1), (c*w):(c*w+w1), :] = image
                 l += 1
         series.append(cv2.resize(frame, None, fx=0.4, fy=0.4))
-    visualize_series(os.path.join(output, 'all'), series, None)
+    visualize_series(os.path.join(output_path, 'all'), series, None)
 
 
 if __name__ == '__main__':
