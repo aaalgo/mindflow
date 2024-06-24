@@ -92,8 +92,8 @@ def visualize_series (root, frames, scale=2.0):
                 </video><br/>
                 ''')
             f.write(f'''<h3>Step {t}</h3>\n''')
-            f.write(f'''<img src='{t:04d}.png'></img><br/>\n''')
-            cv2.imwrite(os.path.join(root, '%04d.png' % t), frame)
+            f.write(f'''<img src='{t:04d}.jpg'></img><br/>\n''')
+            cv2.imwrite(os.path.join(root, '%04d.jpg' % t), frame)
             out.write(frame)
     out.release()
 
@@ -172,5 +172,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     visualize(args.input, args.output, args.level)
     print("Run the following command to update video:")
-    print("ls -d level_0* | parallel ffmpeg -i {}/video.avi -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p {}/video.mp4")
+    print("ls -d level_* | parallel ffmpeg -i {}/video.avi -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p {}/video.mp4")
 
